@@ -34,8 +34,6 @@ if ( $longurl === false ) {
 	yourls_redirect( YOURLS_SITE, 302 );
 }
 
-yourls_do_action( 'pre_yourls_infos', $keyword );
-
 if( yourls_do_log_redirect() ) {
 
 	// Duplicate keywords, if applicable
@@ -45,16 +43,16 @@ if( yourls_do_log_redirect() ) {
 	$table = YOURLS_DB_TABLE_LOG;
 
 	if( $aggregate ) {
-		// Fetch information for all keywords pointing to $longurl
 		$keywords = join( "', '", $keyword_list );
-		$query = "SELECT `shorturl`, `click_time`, `referrer`, `user_agent`, `country_code` FROM `$table` WHERE `shorturl` IN ( '$keywords' );";
+		// Fetch information for all keywords pointing to $longurl
+		$hits = $ydb->get_results( "SELECT `shorturl`, `click_time`, `referrer`, `user_agent`, `country_code` FROM `$table` WHERE `shorturl` IN ( '$keywords' );" );
 	} else {
 		// Fetch information for current keyword only
-		$query = "SELECT `click_time`, `referrer`, `user_agent`, `country_code` FROM `$table` WHERE `shorturl` = '$keyword'";
+		$hits = $ydb->get_results( "SELECT `click_time`, `referrer`, `user_agent`, `country_code` FROM `$table` WHERE `shorturl` = '$keyword';" );
 	}
 	
-	$hits = $ydb->get_results( yourls_apply_filter( 'stat_query_all', $query ) );
 	
+	$user_agents = array();	
 	$referrers = array();
 	$direct = $notdirect = 0;
 	$countries = array();
@@ -63,6 +61,8 @@ if( yourls_do_log_redirect() ) {
 	$list_of_months = array();
 	$list_of_years = array();
 	$last_24h = array();
+	
+
 
 	// Loop through all results and build list of referrers, countries and hits per day
 	foreach( (array)$hits as $hit ) {
@@ -74,6 +74,14 @@ if( yourls_do_log_redirect() ) {
 			$countries[$country_code]++;
 		}
 		
+		if ( isset( $user_agent ) && $user_agent ) {
+			if ( !array_key_exists( $user_agent, $user_agents ) )
+				$user_agents[$user_agent] = 0;
+			$user_agents[$user_agent]++;
+		}
+
+
+
 		if( isset( $referrer ) ) {
 			if ( $referrer == 'direct' ) {
 				$direct++;
@@ -127,9 +135,6 @@ if( yourls_do_log_redirect() ) {
 	}
 
 	// Get $list_of_days, $list_of_months, $list_of_years
-	reset($dates);
-	$first_year = key( $dates );
-	$last_year  = end( array_keys($dates) );
 	if( $dates ) {
 		extract( yourls_build_list_of_days( $dates ) );
 
@@ -156,21 +161,11 @@ if( yourls_do_log_redirect() ) {
 			$referrer_sort[$site] = array_sum( $urls );
 	}
 	arsort($referrer_sort);
-	
-	// Filter all this junk if applicable. Be warned, some are possibly huge datasets.
-	$referrers      = yourls_apply_filter( 'pre_yourls_info_referrers', $referrers );
-	$referrer_sort  = yourls_apply_filter( 'pre_yourls_info_referrer_sort', $referrer_sort );
-	$direct         = yourls_apply_filter( 'pre_yourls_info_direct', $direct );
-	$notdirect      = yourls_apply_filter( 'pre_yourls_info_notdirect', $notdirect );
-	$dates          = yourls_apply_filter( 'pre_yourls_info_dates', $dates );
-	$list_of_days   = yourls_apply_filter( 'pre_yourls_info_list_of_days', $list_of_days );
-	$list_of_months = yourls_apply_filter( 'pre_yourls_info_list_of_months', $list_of_months );
-	$list_of_years  = yourls_apply_filter( 'pre_yourls_info_list_of_years', $list_of_years );
-	$last_24h       = yourls_apply_filter( 'pre_yourls_info_last_24h', $last_24h );
-	$countries      = yourls_apply_filter( 'pre_yourls_info_countries', $countries );
+
 
 	/**
-	echo "<pre>";
+	/echo "<pre>";
+	echo "user agents: "; print_r( $user_agents );
 	echo "referrers: "; print_r( $referrers );
 	echo "referrer sort: "; print_r( $referrer_sort );
 	echo "direct: $direct\n";
@@ -181,6 +176,7 @@ if( yourls_do_log_redirect() ) {
 	echo "list_of_years: "; print_r( $list_of_years );
 	echo "last_24h: "; print_r( $last_24h );
 	echo "countries: "; print_r( $countries );
+
 	die();
 	/**/
 
@@ -193,7 +189,7 @@ yourls_html_menu();
 
 <h2 id="informations"><?php echo $title; ?></h2>
 
-<h3><span class="label">Short URL:</span> <img src="<?php echo yourls_match_current_protocol( YOURLS_SITE ); ?>/images/favicon.gif"/>
+<h3><span class="label">Short URL:</span> <img src="<?php echo YOURLS_SITE; ?>/images/favicon.gif"/>
 <?php if( $aggregate ) {
 	$i = 0;
 	foreach( $keyword_list as $k ) {
@@ -209,7 +205,7 @@ yourls_html_menu();
 } else {
 	yourls_html_link( yourls_link($keyword) );
 	if( count( $keyword_list ) > 1 )
-		echo ' <a href="'. yourls_link($keyword).'+all" title="Aggregate stats for duplicate short URLs"><img src="' . yourls_match_current_protocol( YOURLS_SITE ) . '/images/chart_bar_add.png" border="0" /></a>';
+		echo ' <a href="'. yourls_link($keyword).'+all" title="Aggregate stats for duplicate short URLs"><img src="' . YOURLS_SITE . '/images/chart_bar_add.png" border="0" /></a>';
 } ?></h3>
 <h3 id="longurl"><span class="label">Long URL:</span> <img class="fix_images" src="<?php echo yourls_get_favicon_url( $longurl );?>" /> <?php yourls_html_link( $longurl, yourls_trim_long_string( $longurl ), 'longurl' ); ?></h3>
 
@@ -222,6 +218,7 @@ yourls_html_menu();
 		<li><a href="#stat_tab_sources"><h2>Traffic sources</h2></a></li>
 		<?php } ?>
 		<li><a href="#stat_tab_share"><h2>Share</h2></a></li>
+		<li><a href="#stat_tab_user_agents"><h2>User Agents</h2></a></li>
 	</ul>
 	</div>
 
@@ -229,8 +226,6 @@ yourls_html_menu();
 <?php if( yourls_do_log_redirect() ) { ?>
 	<div id="stat_tab_stats" class="tab">
 		<h2>Traffic statistics</h2>
-		
-		<?php yourls_do_action( 'pre_yourls_info_stats', $keyword ); ?>
 		
 		<?php if ( $list_of_days ) { ?>
 		
@@ -287,7 +282,7 @@ yourls_html_menu();
 				</ul>
 				<?php
 				// Generate, and display if applicable, each needed graph
-				foreach( $graphs as $graph => $graphtitle ) {
+				foreach( $graphs as $graph => $title ) {
 					if( ${'do_'.$graph} == true ) {
 						$display = ( ${'display_'.$graph} === true ? 'display:block' : 'display:none' );
 						echo "<div id='stat_line_$graph' class='stats_line line' style='$display'>";
@@ -306,7 +301,7 @@ yourls_html_menu();
 									$labels_1[] = end( explode( '-', $k ) ); // 'hh'
 								}
 								
-								echo "<h3>Number of hits : $graphtitle</h3>";
+								echo "<h3>Number of hits : $title</h3>";
 								yourls_stats_line( $last_24h, $labels_1, $labels_2 );
 								break;
 
@@ -325,7 +320,7 @@ yourls_html_menu();
 								$last_label = preg_replace( '/\d\d\d\d-(\d\d)-(\d\d)/', '$2/$1', $last_key );
 								$labels_2 = array( $first_label, $last_label);
 								
-								echo "<h3>Number of hits : $graphtitle</h3>";
+								echo "<h3>Number of hits : $title</h3>";
 								yourls_stats_line( $slice, $labels_1, $labels_2 );
 								unset( $slice );
 								break;
@@ -342,7 +337,7 @@ yourls_html_menu();
 									$labels_1[$k] = preg_replace( '/\d\d-(\d\d)/', '$1', $v );
 								}
 								
-								echo "<h3>Number of hits : $graphtitle</h3>";
+								echo "<h3>Number of hits : $title</h3>";
 								$labels_1 = yourls_array_granularity( $labels_1, 30, false );
 								$labels_2 = yourls_array_granularity( $list_of_years, 30, false );
 								yourls_stats_line( $list_of_days, $labels_1, $labels_2 );
@@ -367,11 +362,11 @@ yourls_html_menu();
 				<div class="wrap_unfloat">
 					<ul class="no_bullet toggle_display stat_line" id="historical_clicks">
 					<?php
-					foreach( $graphs as $graph => $graphtitle ) {
+					foreach( $graphs as $graph => $title ) {
 						if ( ${'do_'.$graph} ) {
-							$link = "<a href='#stat_line_$graph'>$graphtitle</a>";
+							$link = "<a href='#stat_line_$graph'>$title</a>";
 						} else {
-							$link = $graphtitle;
+							$link = $title;
 						}
 						$stat = '';
 						if( ${'do_'.$graph} ) {
@@ -438,7 +433,7 @@ yourls_html_menu();
 			</tr>
 			</table>
 
-		<?php yourls_do_action( 'post_yourls_info_stats', $keyword ); ?>
+
 		
 		<?php } else {
 			echo "<p>No traffic yet. Get some clicks first!</p>";
@@ -449,8 +444,6 @@ yourls_html_menu();
 	<div id="stat_tab_location" class="tab">
 		<h2>Traffic location</h2>
 		
-		<?php yourls_do_action( 'pre_yourls_info_location', $keyword ); ?>
-
 		<?php if ( $countries ) { ?>
 			
 			<table border="0" cellspacing="2">
@@ -475,8 +468,6 @@ yourls_html_menu();
 			</tr>
 			</table>
 		
-		<?php yourls_do_action( 'post_yourls_info_location', $keyword ); ?>
-
 		<?php } else {
 			echo "<p>No country data.</p>";
 		} ?>
@@ -486,8 +477,6 @@ yourls_html_menu();
 	<div id="stat_tab_sources" class="tab">
 		<h2>Traffic Sources</h2>
 		
-		<?php yourls_do_action( 'pre_yourls_info_sources', $keyword ); ?>
-
 		<?php if ( $referrers ) { ?>
 			
 			<table border="0" cellspacing="2">
@@ -542,8 +531,6 @@ yourls_html_menu();
 			</tr>
 			</table>
 
-		<?php yourls_do_action( 'post_yourls_info_sources', $keyword ); ?>
-			
 		<?php } else {
 			echo "<p>No referrer data.</p>";
 		} ?>
@@ -556,7 +543,44 @@ yourls_html_menu();
 	<div id="stat_tab_share" class="tab">
 		<h2>Share</h2>
 		
-		<?php yourls_share_box( $longurl, yourls_link($keyword), $title, '', '<h3>Short link</h3>', '<h3>Quick Share</h3>'); ?>
+		<?php yourls_share_box( $longurl, yourls_link($keyword), '', '', '<h3>Short link</h3>', '<h3>Quick Share</h3>'); ?>
+
+	</div>
+
+	<div id="stat_tab_user_agents" class="tab">
+		<h2>User Agents</h2>
+		
+	<?php // echo "user agents: "; print_r( $user_agents );?>
+
+
+
+		<?php if ( $user_agents ) { 
+
+			arsort( $user_agents );?>
+			
+				<h3>List of all user agents</h3>
+									
+				<div class="wrap_unfloat">
+					<ul class="no_bullet toggle_display stat_line" id="historical_clicks">
+					<li><span class="historical_link" style="font-weight: bold; width: 500px;">User Agent String</span><span style="font-weight: bold;" class="historical_count">Hits</span></li>
+					<?php
+						$hitcount = 0;
+						foreach ($user_agents as $key => $hits)
+						{
+							echo "<li><span style='";
+							if ( strpos($key, 'bot') !== false or strpos($key, 'Bot') !== false )
+								echo "color: lightgray;";
+							echo "width: 500px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; ' class='historical_link'>" . $key . "</span><span class='historical_count'>" . $hits . "</span></li>";
+							$hitcount = $hitcount + $hits;
+
+
+						}
+						echo '<li><span class="historical_link" style="width: 500px; font-weight: bold">Total</span><span class="historical_count" style="font-weight: bold">' . $hitcount . '</span></li>';
+					?>
+					
+					</ul>
+				</div>
+		<?php } ?>
 
 	</div>
 	
